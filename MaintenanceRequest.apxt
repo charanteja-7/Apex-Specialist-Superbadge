@@ -1,0 +1,15 @@
+trigger MaintenanceRequest on Case (after update) {
+    
+    List<Case> closedCases = new List<Case>();
+    
+    for(Case c : Trigger.new){
+        Case oldC = Trigger.oldMap.get(c.Id);
+        
+        if(c.Status == 'Closed' && oldC.Status != 'Closed' && (c.Type == 'Repair' || c.Type == 'Routine Maintenance')){
+            closedCases.add(c);
+        }
+    }
+    if(!closedCases.isEmpty()){
+        MaintenanceRequestHelper.createdNewMaintenanceCases(closedCases);
+    }
+}
