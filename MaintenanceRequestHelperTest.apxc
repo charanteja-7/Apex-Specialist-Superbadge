@@ -1,0 +1,58 @@
+@isTest
+public with sharing class MaintenanceRequestHelperTest {
+
+    @isTest
+    static void testTriggerCreatesNextMaintenanceCase() {
+        // Create test Equipment
+        Product2 equipment = new Product2(
+            Name = 'Test Equipment',
+            IsActive = true,
+            Replacement_Part__c = true,
+            Maintenance_Cycle__c = 60,
+            Warehouse_SKU__c = 'SKU123'
+        );
+        insert equipment;
+
+        // Create a case with status NOT 'Closed'
+        Case testCase = new Case(
+            Type = 'Routine Maintenance',
+            Status = 'New',
+            Origin = 'Phone',
+            Subject = 'Initial Maintenance',
+            Date_Reported__c = Date.today()
+        );
+        insert testCase;
+
+        // Link the equipment to the case
+        Equipment_Maintenance_Item__c link = new Equipment_Maintenance_Item__c(
+            Maintenance_Request__c = testCase.Id,
+            Equipment__c = equipment.Id
+        );
+        insert link;
+
+        // Update the case to Closed, triggering the logic
+        testCase.Status = 'Closed';
+
+        Test.startTest();
+        update testCase;
+        Test.stopTest();
+
+        // Validate a new Case was created
+        List<Case> newCases = [
+            SELECT Id, Subject, Status, Date_Due__c 
+            FROM Case 
+            WHERE Subject = 'Scheduled Routine Maintenance'
+        ];
+        System.assertEquals(1, newCases.size(), 'One follow-up maintenance case should be created');
+        System.assertEquals('New', newCases[0].Status);
+
+        // Validate new Equipment_Maintenance_Item__c was created and linked
+        List<Equipment_Maintenance_Item__c> newLinks = [
+            SELECT Id, Maintenance_Request__c, Equipment__c 
+            FROM Equipment_Maintenance_Item__c 
+            WHERE Maintenance_Request__c = :newCases[0].Id
+        ];
+        System.assertEquals(1, newLinks.size(), 'The equipment should be linked to the new case');
+        System.assertEquals(equipment.Id, newLinks[0].Equipment__c);
+    }
+}
