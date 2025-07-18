@@ -1,0 +1,9 @@
+global class WarehouseCalloutServiceMock implements HttpCalloutMock {
+    global HttpResponse respond(HttpRequest req) {
+        HttpResponse res = new HttpResponse();
+        res.setHeader('Content-Type', 'application/json');
+        res.setBody('[{"_id":"abc123","replacement":true,"quantity":100,"name":"Test Equipment","maintenanceperiod":180,"lifespan":24,"cost":999,"sku":"100004"}]');
+        res.setStatusCode(200);
+        return res;
+    }
+}
