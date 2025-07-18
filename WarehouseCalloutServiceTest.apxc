@@ -1,0 +1,19 @@
+@isTest
+private class WarehouseCalloutServiceTest {
+
+    @isTest
+    static void testWarehouseCallout() {
+        Test.startTest();
+        Test.setMock(HttpCalloutMock.class, new WarehouseCalloutServiceMock());
+        System.enqueueJob(new WarehouseCalloutService());
+        Test.stopTest();
+
+        // Validate the product was inserted
+        Product2[] products = [
+            SELECT Id, Name, Warehouse_SKU__c, Cost__c, Current_Inventory__c 
+            FROM Product2 
+            WHERE Warehouse_SKU__c = '100004'
+        ];
+        System.assertEquals(1, products.size(), 'Product should have been created or updated');
+    }
+}
