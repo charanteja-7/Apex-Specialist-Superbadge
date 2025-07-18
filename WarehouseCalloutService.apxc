@@ -1,0 +1,39 @@
+public with sharing class WarehouseCalloutService implements Queueable, Database.AllowsCallouts {
+
+    private static final String WAREHOUSE_URL = 'https://th-superbadge-apex.herokuapp.com/equipment';
+
+    public void execute(QueueableContext context) {
+        Http http = new Http();
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(WAREHOUSE_URL);
+        request.setMethod('GET');
+
+        HttpResponse response = http.send(request);
+
+        if (response.getStatusCode() == 200) {
+            List<Object> responseData = (List<Object>) JSON.deserializeUntyped(response.getBody());
+            List<Product2> productsToUpsert = new List<Product2>();
+
+            for (Object obj : responseData) {
+                Map<String, Object> item = (Map<String, Object>) obj;
+
+                Product2 p = new Product2();
+                p.Name = (String) item.get('name');
+                p.Warehouse_SKU__c = (String) item.get('sku');
+                p.Cost__c = (Decimal) item.get('cost');
+                p.Current_Inventory__c = (Integer) item.get('quantity');
+                p.Lifespan_Months__c = (Integer) item.get('lifespan');
+                p.Maintenance_Cycle__c = (Integer) item.get('maintenanceperiod');
+                p.Replacement_Part__c = true; // Always true per requirements
+
+                productsToUpsert.add(p);
+            }
+
+            if (!productsToUpsert.isEmpty()) {
+                upsert productsToUpsert Product2.Warehouse_SKU__c;
+            }
+        } else {
+            System.debug('Warehouse callout failed: ' + response.getStatus());
+        }
+    }
+}
