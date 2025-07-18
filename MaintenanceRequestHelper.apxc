@@ -1,0 +1,98 @@
+public with sharing class MaintenanceRequestHelper {
+
+    public static void createdNewMaintenanceCases(List<Case> closedCases) {
+        if (closedCases == null || closedCases.isEmpty()) return;
+
+        Set<Id> caseIds = new Set<Id>();
+        for (Case c : closedCases) {
+            caseIds.add(c.Id);
+        }
+
+        // Map CaseId to related Equipment_Maintenance_Items
+        Map<Id, List<Equipment_Maintenance_Item__c>> caseToItems = new Map<Id, List<Equipment_Maintenance_Item__c>>();
+        Map<Id, List<Integer>> caseToCycles = new Map<Id, List<Integer>>();
+
+        List<Equipment_Maintenance_Item__c> emItems = [
+            SELECT Id, Maintenance_Request__c, Equipment__c, Equipment__r.Maintenance_Cycle__c
+            FROM Equipment_Maintenance_Item__c
+            WHERE Maintenance_Request__c IN :caseIds
+        ];
+
+        for (Equipment_Maintenance_Item__c item : emItems) {
+            Id caseId = item.Maintenance_Request__c;
+            if (!caseToItems.containsKey(caseId)) {
+                caseToItems.put(caseId, new List<Equipment_Maintenance_Item__c>());
+                caseToCycles.put(caseId, new List<Integer>());
+            }
+
+            caseToItems.get(caseId).add(item);
+            if (item.Equipment__r.Maintenance_Cycle__c != null) {
+                caseToCycles.get(caseId).add((Integer)item.Equipment__r.Maintenance_Cycle__c);
+            }
+        }
+
+        // New Cases and Equipment links
+        List<Case> newMaintenanceCases = new List<Case>();
+        Map<Id, Id> oldToNewCaseMap = new Map<Id, Id>(); // map old caseId → new caseId (after insert)
+
+        // Step 1: Create the new Cases
+        for (Case closedCase : closedCases) {
+            List<Integer> cycles = caseToCycles.get(closedCase.Id);
+            if (cycles == null || cycles.isEmpty()) continue;
+
+            Integer minDays;
+            for (Integer cycle : cycles) {
+                if (minDays == null || cycle < minDays) {
+                    minDays = cycle;
+                }
+            }
+
+            if (minDays == null) continue;
+
+            Case newCase = new Case();
+            newCase.Type = 'Routine Maintenance';
+            newCase.Status = 'New';
+            newCase.Origin = closedCase.Origin;
+            newCase.Subject = 'Scheduled Routine Maintenance';
+            newCase.Vehicle__c = closedCase.Vehicle__c;
+            newCase.Date_Reported__c = Date.today();
+            newCase.Date_Due__c = Date.today().addDays(minDays);
+            newMaintenanceCases.add(newCase);
+
+            // Temporarily map to preserve order for linking equipment later
+            oldToNewCaseMap.put(closedCase.Id, null); // Placeholder for now
+        }
+
+        if (!newMaintenanceCases.isEmpty()) {
+            insert newMaintenanceCases;
+
+            // Re-link inserted Cases to their matching old Case
+            Integer index = 0;
+            for (Id oldCaseId : oldToNewCaseMap.keySet()) {
+                if (index < newMaintenanceCases.size()) {
+                    oldToNewCaseMap.put(oldCaseId, newMaintenanceCases[index].Id);
+                    index++;
+                }
+            }
+        }
+
+        // Step 2: Create new Equipment_Maintenance_Item__c records
+        List<Equipment_Maintenance_Item__c> newEquipmentLinks = new List<Equipment_Maintenance_Item__c>();
+
+        for (Id oldCaseId : oldToNewCaseMap.keySet()) {
+            Id newCaseId = oldToNewCaseMap.get(oldCaseId);
+            if (newCaseId == null) continue;
+
+            for (Equipment_Maintenance_Item__c oldItem : caseToItems.get(oldCaseId)) {
+                Equipment_Maintenance_Item__c newItem = new Equipment_Maintenance_Item__c();
+                newItem.Maintenance_Request__c = newCaseId;
+                newItem.Equipment__c = oldItem.Equipment__c;
+                newEquipmentLinks.add(newItem);
+            }
+        }
+
+        if (!newEquipmentLinks.isEmpty()) {
+            insert newEquipmentLinks;
+        }
+    }
+}
